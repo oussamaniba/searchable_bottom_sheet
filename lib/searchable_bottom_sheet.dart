@@ -21,9 +21,11 @@ class PaginatedResponse<T> {
 class SearchableBottomSheet<T> extends StatelessWidget {
   final List<T>? items;
   final String title;
-  final Function(T) onItemSelected;
+  final Function(T)? onItemSelected;
+  final Function(List<T>)? onMultipleItemsSelected;
   final List<String> Function(T) searchKey;
-  final Widget Function(T) itemBuilder;
+  final Widget Function(T, bool isSelected)? itemBuilderWithSelection;
+  final Widget Function(T)? itemBuilder;
   final Color? backgroundColor;
   final ShapeBorder? shape;
   final double? elevation;
@@ -42,13 +44,19 @@ class SearchableBottomSheet<T> extends StatelessWidget {
   final Widget? loadingWidget;
   final Widget? emptyWidget;
   final Widget Function(String)? errorBuilder;
+  final bool multiSelect;
+  final List<T>? initialSelectedItems;
+  final String? confirmButtonText;
+  final String? cancelButtonText;
 
   const SearchableBottomSheet({
     super.key,
     this.items,
-    required this.onItemSelected,
+    this.onItemSelected,
+    this.onMultipleItemsSelected,
     required this.searchKey,
-    required this.itemBuilder,
+    this.itemBuilderWithSelection,
+    this.itemBuilder,
     this.title = "Search",
     this.backgroundColor,
     this.shape,
@@ -68,9 +76,25 @@ class SearchableBottomSheet<T> extends StatelessWidget {
     this.loadingWidget,
     this.emptyWidget,
     this.errorBuilder,
+    this.multiSelect = false,
+    this.initialSelectedItems,
+    this.confirmButtonText,
+    this.cancelButtonText,
   }) : assert(
           items != null || fetchFunction != null,
           'Either items or fetchFunction must be provided',
+        ),
+        assert(
+          itemBuilder != null || itemBuilderWithSelection != null,
+          'Either itemBuilder or itemBuilderWithSelection must be provided',
+        ),
+        assert(
+          !multiSelect || onMultipleItemsSelected != null,
+          'onMultipleItemsSelected must be provided when multiSelect is true',
+        ),
+        assert(
+          multiSelect || onItemSelected != null,
+          'onItemSelected must be provided when multiSelect is false',
         );
 
   @override
@@ -79,8 +103,10 @@ class SearchableBottomSheet<T> extends StatelessWidget {
       items: items,
       title: title,
       onItemSelected: onItemSelected,
+      onMultipleItemsSelected: onMultipleItemsSelected,
       searchKey: searchKey,
       itemBuilder: itemBuilder,
+      itemBuilderWithSelection: itemBuilderWithSelection,
       padding: padding,
       customLeadingItems: customLeadingItems,
       customTrailingItems: customTrailingItems,
@@ -89,15 +115,21 @@ class SearchableBottomSheet<T> extends StatelessWidget {
       loadingWidget: loadingWidget,
       emptyWidget: emptyWidget,
       errorBuilder: errorBuilder,
+      multiSelect: multiSelect,
+      initialSelectedItems: initialSelectedItems,
+      confirmButtonText: confirmButtonText,
+      cancelButtonText: cancelButtonText,
     );
   }
 
   static void show<T>({
     required BuildContext context,
     List<T>? items,
-    required Function(T) onItemSelected,
+    Function(T)? onItemSelected,
+    Function(List<T>)? onMultipleItemsSelected,
     required List<String> Function(T) searchKey,
-    required Widget Function(T) itemBuilder,
+    Widget Function(T, bool isSelected)? itemBuilderWithSelection,
+    Widget Function(T)? itemBuilder,
     String title = "Search",
     Color? backgroundColor,
     ShapeBorder? shape,
@@ -117,6 +149,10 @@ class SearchableBottomSheet<T> extends StatelessWidget {
     Widget? loadingWidget,
     Widget? emptyWidget,
     Widget Function(String)? errorBuilder,
+    bool multiSelect = false,
+    List<T>? initialSelectedItems,
+    String? confirmButtonText,
+    String? cancelButtonText,
   }) {
     showModalBottomSheet(
       context: context,
@@ -134,8 +170,10 @@ class SearchableBottomSheet<T> extends StatelessWidget {
         items: items,
         title: title,
         onItemSelected: onItemSelected,
+        onMultipleItemsSelected: onMultipleItemsSelected,
         searchKey: searchKey,
         itemBuilder: itemBuilder,
+        itemBuilderWithSelection: itemBuilderWithSelection,
         backgroundColor: backgroundColor,
         shape: shape,
         elevation: elevation,
@@ -154,6 +192,10 @@ class SearchableBottomSheet<T> extends StatelessWidget {
         loadingWidget: loadingWidget,
         emptyWidget: emptyWidget,
         errorBuilder: errorBuilder,
+        multiSelect: multiSelect,
+        initialSelectedItems: initialSelectedItems,
+        confirmButtonText: confirmButtonText,
+        cancelButtonText: cancelButtonText,
       ),
     );
   }
@@ -162,9 +204,11 @@ class SearchableBottomSheet<T> extends StatelessWidget {
 class _AutoResizingSearchableBottomSheetContent<T> extends StatefulWidget {
   final List<T>? items;
   final String title;
-  final Function(T) onItemSelected;
+  final Function(T)? onItemSelected;
+  final Function(List<T>)? onMultipleItemsSelected;
   final List<String> Function(T) searchKey;
-  final Widget Function(T) itemBuilder;
+  final Widget Function(T)? itemBuilder;
+  final Widget Function(T, bool isSelected)? itemBuilderWithSelection;
   final EdgeInsetsGeometry? padding;
   final List<Widget>? customLeadingItems;
   final List<Widget>? customTrailingItems;
@@ -173,13 +217,19 @@ class _AutoResizingSearchableBottomSheetContent<T> extends StatefulWidget {
   final Widget? loadingWidget;
   final Widget? emptyWidget;
   final Widget Function(String)? errorBuilder;
+  final bool multiSelect;
+  final List<T>? initialSelectedItems;
+  final String? confirmButtonText;
+  final String? cancelButtonText;
 
   const _AutoResizingSearchableBottomSheetContent({
     this.items,
     required this.title,
-    required this.onItemSelected,
+    this.onItemSelected,
+    this.onMultipleItemsSelected,
     required this.searchKey,
-    required this.itemBuilder,
+    this.itemBuilder,
+    this.itemBuilderWithSelection,
     this.padding,
     this.customLeadingItems,
     this.customTrailingItems,
@@ -188,6 +238,10 @@ class _AutoResizingSearchableBottomSheetContent<T> extends StatefulWidget {
     this.loadingWidget,
     this.emptyWidget,
     this.errorBuilder,
+    required this.multiSelect,
+    this.initialSelectedItems,
+    this.confirmButtonText,
+    this.cancelButtonText,
   });
 
   @override
@@ -198,6 +252,7 @@ class _AutoResizingSearchableBottomSheetContent<T> extends StatefulWidget {
 class __AutoResizingSearchableBottomSheetContentState<T>
     extends State<_AutoResizingSearchableBottomSheetContent<T>> {
   late List<T> filteredItems;
+  late Set<T> selectedItems;
   TextEditingController searchController = TextEditingController();
   ScrollController scrollController = ScrollController();
   
@@ -211,6 +266,8 @@ class __AutoResizingSearchableBottomSheetContentState<T>
   @override
   void initState() {
     super.initState();
+    
+    selectedItems = widget.initialSelectedItems?.toSet() ?? {};
     
     if (widget.fetchFunction != null) {
       // API mode
@@ -316,6 +373,21 @@ class __AutoResizingSearchableBottomSheetContentState<T>
     }
   }
 
+  void _toggleSelection(T item) {
+    setState(() {
+      if (selectedItems.contains(item)) {
+        selectedItems.remove(item);
+      } else {
+        selectedItems.add(item);
+      }
+    });
+  }
+
+  void _confirmSelection() {
+    Navigator.pop(context);
+    widget.onMultipleItemsSelected!(selectedItems.toList());
+  }
+
   @override
   void dispose() {
     searchController.removeListener(_onSearchChanged);
@@ -377,6 +449,38 @@ class __AutoResizingSearchableBottomSheetContentState<T>
           // Custom leading items
           if (widget.customLeadingItems != null) ...widget.customLeadingItems!,
           
+          // Selection counter for multi-select
+          if (widget.multiSelect && selectedItems.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).primaryColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${selectedItems.length} selected',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).primaryColor,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      setState(() {
+                        selectedItems.clear();
+                      });
+                    },
+                    child: const Text('Clear'),
+                  ),
+                ],
+              ),
+            ),
+          if (widget.multiSelect && selectedItems.isNotEmpty)
+            const SizedBox(height: 8),
+          
           TextField(
             controller: searchController,
             decoration: InputDecoration(
@@ -393,6 +497,28 @@ class __AutoResizingSearchableBottomSheetContentState<T>
           Expanded(
             child: _buildContent(),
           ),
+          
+          // Confirm/Cancel buttons for multi-select
+          if (widget.multiSelect) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: Text(widget.cancelButtonText ?? 'Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: selectedItems.isEmpty ? null : _confirmSelection,
+                    child: Text(widget.confirmButtonText ?? 'Confirm'),
+                  ),
+                ),
+              ],
+            ),
+          ],
           
           // Custom trailing items
           if (widget.customTrailingItems != null) ...widget.customTrailingItems!,
@@ -428,14 +554,45 @@ class __AutoResizingSearchableBottomSheetContentState<T>
         }
 
         final item = filteredItems[index];
+        final isSelected = selectedItems.contains(item);
+
         return InkWell(
           onTap: () {
-            Navigator.pop(context);
-            widget.onItemSelected(item);
+            if (widget.multiSelect) {
+              _toggleSelection(item);
+            } else {
+              Navigator.pop(context);
+              widget.onItemSelected!(item);
+            }
           },
-          child: widget.itemBuilder(item),
+          child: widget.multiSelect
+              ? (widget.itemBuilderWithSelection != null
+                  ? widget.itemBuilderWithSelection!(item, isSelected)
+                  : _buildDefaultMultiSelectItem(item, isSelected))
+              : widget.itemBuilder!(item),
         );
       },
+    );
+  }
+
+  Widget _buildDefaultMultiSelectItem(T item, bool isSelected) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isSelected
+            ? Theme.of(context).primaryColor.withOpacity(0.1)
+            : null,
+      ),
+      child: Row(
+        children: [
+          Checkbox(
+            value: isSelected,
+            onChanged: (_) => _toggleSelection(item),
+          ),
+          Expanded(
+            child: widget.itemBuilder!(item),
+          ),
+        ],
+      ),
     );
   }
 }
