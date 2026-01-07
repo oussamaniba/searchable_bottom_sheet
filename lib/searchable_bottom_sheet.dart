@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:sealer/core/extensions/widget_extensions.dart';
+import 'package:sealer/views/home/components/PaginatedSearchFolder.dart';
+import 'package:sealer/core/utils/Reflector.dart';
 
 typedef PaginatedFetchFunction<T> = Future<PaginatedResponse<T>> Function(
   int page,
@@ -592,6 +595,211 @@ class __AutoResizingSearchableBottomSheetContentState<T>
             child: widget.itemBuilder!(item),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A reusable searchable modal field that supports both single and multi-selection
+///
+/// This widget displays a text field that opens a searchable modal bottom sheet
+/// when tapped. It supports generic types and async data loading.
+///
+/// Type parameter [T] can be any type that has a displayableValue() method
+/// or is a String.
+class SearchableModalField<T> extends StatelessWidget {
+  final String hintText;
+  final String? value;
+  final List<T>? selectedItems;
+  final Future<List<T>> Function(String pattern) loadItems;
+  final void Function(T?)? onChanged;
+  final void Function(List<T>)? onMultipleChanged;
+  final List<Widget> onAction;
+  final bool multiSelect;
+  final String? confirmButtonText;
+  final String? cancelButtonText;
+  final Widget Function(T, bool isSelected)? itemBuilderWithSelection;
+  final EdgeInsetsGeometry? padding;
+  final Widget? loadingWidget;
+  final Widget? emptyWidget;
+  final Widget Function(String)? errorBuilder;
+  final BoxConstraints? constraints;
+
+  const SearchableModalField({
+    required this.hintText,
+    required this.loadItems,
+    this.onChanged,
+    this.onMultipleChanged,
+    this.value,
+    this.selectedItems,
+    this.onAction = const [],
+    this.multiSelect = false,
+    this.confirmButtonText,
+    this.cancelButtonText,
+    this.itemBuilderWithSelection,
+    this.padding,
+    this.loadingWidget,
+    this.emptyWidget,
+    this.errorBuilder,
+    this.constraints,
+    super.key,
+  }) : assert(
+          !multiSelect || onMultipleChanged != null,
+          'onMultipleChanged must be provided when multiSelect is true',
+        ),
+        assert(
+          multiSelect || onChanged != null,
+          'onChanged must be provided when multiSelect is false',
+        );
+
+  /// Get displayable value from an item
+  /// Uses reflection for objects with displayableValue() method
+  /// Falls back to toString() for simple types like String
+  String getDisplayableValue(T item) {
+    if (item is String) {
+      return item;
+    }
+
+    try {
+      final instanceMirror = reflector.reflect(item as Object);
+      final result = instanceMirror.invoke('displayableValue', []);
+      return result.toString();
+    } catch (e) {
+      return item.toString();
+    }
+  }
+
+  /// Get display text for the field
+  String _getDisplayText() {
+    if (multiSelect) {
+      if (selectedItems == null || selectedItems!.isEmpty) {
+        return hintText;
+      }
+      if (selectedItems!.length == 1) {
+        return getDisplayableValue(selectedItems!.first);
+      }
+      return '${selectedItems!.length} items selected';
+    } else {
+      return (value == null || value!.isEmpty) ? hintText : value!;
+    }
+  }
+
+  /// Check if field has value
+  bool _hasValue() {
+    if (multiSelect) {
+      return selectedItems != null && selectedItems!.isNotEmpty;
+    } else {
+      return value != null && value!.isNotEmpty;
+    }
+  }
+
+  /// Opens the searchable modal bottom sheet
+  void _openSearchModal(BuildContext context) async {
+    if (!context.mounted) return;
+
+    if (multiSelect) {
+      SearchableBottomSheet.show<T>(
+        context: context,
+        fetchFunction: (page, pageSize, searchQuery) async {
+          final response = await loadItems(searchQuery);
+          return PaginatedResponse(
+            items: response,
+            hasMore: false,
+            totalCount: response.length,
+          );
+        },
+        multiSelect: true,
+        initialSelectedItems: selectedItems,
+        onMultipleItemsSelected: (items) => onMultipleChanged!(items),
+        searchKey: (item) => [getDisplayableValue(item)],
+        itemBuilder: (item) => Text(
+          getDisplayableValue(item),
+          style: Theme.of(context).textTheme.titleMedium,
+        ).withPaddingSymetric(
+          vertical: 10,
+          horizontal: 20,
+        ),
+        itemBuilderWithSelection: itemBuilderWithSelection,
+        padding: padding ?? EdgeInsets.symmetric(vertical: 20, horizontal: 10),
+        loadingWidget: loadingWidget ?? CircularProgressIndicator(),
+        emptyWidget: emptyWidget ?? Text('No items found'),
+        errorBuilder: errorBuilder ?? (error) => Text('Failed: $error'),
+        useSafeArea: true,
+        constraints: constraints ?? BoxConstraints.loose(Size.fromHeight(600)),
+        confirmButtonText: confirmButtonText,
+        cancelButtonText: cancelButtonText,
+      );
+    } else {
+      SearchableBottomSheet.show<T>(
+        context: context,
+        fetchFunction: (page, pageSize, searchQuery) async {
+          final response = await loadItems(searchQuery);
+          return PaginatedResponse(
+            items: response,
+            hasMore: false,
+            totalCount: response.length,
+          );
+        },
+        onItemSelected: (item) => onChanged!(item),
+        searchKey: (item) => [getDisplayableValue(item)],
+        itemBuilder: (item) => Text(
+          getDisplayableValue(item),
+          style: Theme.of(context).textTheme.titleMedium,
+        ).withPaddingSymetric(
+          vertical: 10,
+          horizontal: 20,
+        ),
+        padding: padding ?? EdgeInsets.symmetric(vertical: 20, horizontal: 10),
+        loadingWidget: loadingWidget ?? CircularProgressIndicator(),
+        emptyWidget: emptyWidget ?? Text('No items found'),
+        errorBuilder: errorBuilder ?? (error) => Text('Failed: $error'),
+        useSafeArea: true,
+        constraints: constraints ?? BoxConstraints.loose(Size.fromHeight(600)),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => _openSearchModal(context),
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        height: 55,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey[300]!),
+          borderRadius: BorderRadius.circular(10),
+          color: Theme.of(context).scaffoldBackgroundColor,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Text(
+                _getDisplayText(),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: _hasValue()
+                          ? Theme.of(context).textTheme.bodyMedium?.color
+                          : Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.color
+                              ?.withValues(alpha: .7),
+                    ),
+              ),
+            ),
+            if (onAction.isNotEmpty)
+              ...onAction
+            else
+              Icon(
+                Icons.arrow_drop_down,
+                color: Colors.grey[600],
+              ),
+          ],
+        ),
       ),
     );
   }
